@@ -33,6 +33,7 @@ const IDM_TOGGLE: u32 = 1001;
 const IDM_KEY_CAPSLOCK: u32 = 1010;
 const IDM_KEY_F13: u32 = 1011;
 const IDM_KEY_RALT: u32 = 1012;
+const IDM_KEY_LEARN: u32 = 1013;
 const IDM_DEBUG: u32 = 1020;
 const IDM_EXIT: u32 = 1099;
 
@@ -50,6 +51,9 @@ static SENDING: AtomicBool = AtomicBool::new(false);
 static TRIGGER_KEY: AtomicU32 = AtomicU32::new(VK_CAPITAL.0 as u32);
 static HOOK_HANDLE: AtomicU32 = AtomicU32::new(0);
 static MAIN_HWND: AtomicU32 = AtomicU32::new(0);
+
+/// 키 학습 모드
+static LEARNING: AtomicBool = AtomicBool::new(false);
 
 /// 디버그 윈도우 핸들
 static DEBUG_HWND: AtomicU32 = AtomicU32::new(0);
@@ -137,8 +141,25 @@ unsafe extern "system" fn keyboard_proc(
         let kb = &*(l_param.0 as *const KBDLLHOOKSTRUCT);
         let msg = w_param.0 as u32;
 
-        // 키 다운 이벤트만 로그 (반복 방지)
         if msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN {
+            // 키 학습 모드: 다음 키를 트리거로 설정
+            if LEARNING.load(Ordering::SeqCst) {
+                LEARNING.store(false, Ordering::SeqCst);
+                TRIGGER_KEY.store(kb.vkCode, Ordering::Relaxed);
+                debug_log(&format!(
+                    "[LEARN] captured vk=0x{:02X} scan=0x{:04X} → set as trigger",
+                    kb.vkCode, kb.scanCode
+                ));
+                // 메인 윈도우에 트레이 업데이트 요청
+                let hwnd_val = MAIN_HWND.load(Ordering::SeqCst);
+                if hwnd_val != 0 {
+                    let hwnd = HWND(hwnd_val as isize as *mut _);
+                    let _ = PostMessageW(hwnd, WM_COMMAND,
+                        WPARAM(IDM_KEY_LEARN as usize), LPARAM(kb.vkCode as isize));
+                }
+                return LRESULT(1); // 이 키 이벤트는 소비
+            }
+
             let enabled = ENABLED.load(Ordering::SeqCst);
             let trigger = TRIGGER_KEY.load(Ordering::Relaxed);
 
@@ -153,6 +174,10 @@ unsafe extern "system" fn keyboard_proc(
                 return LRESULT(1);
             }
         } else if msg == WM_KEYUP || msg == WM_SYSKEYUP {
+            // 학습 모드 중이면 키업도 소비
+            if LEARNING.load(Ordering::SeqCst) {
+                return LRESULT(1);
+            }
             // 키 업도 차단해야 원래 키 동작 방지
             let enabled = ENABLED.load(Ordering::SeqCst);
             let trigger = TRIGGER_KEY.load(Ordering::Relaxed);
@@ -236,15 +261,24 @@ fn send_hangul_toggle() {
 
 // ── 트레이 아이콘 관리 ────────────────────────────────────────────────────
 
-fn trigger_key_name(vk: u16) -> &'static str {
+fn trigger_key_name_static(vk: u16) -> Option<&'static str> {
     if vk == VK_CAPITAL.0 {
-        "Caps Lock"
+        Some("Caps Lock")
     } else if vk == VK_F13.0 {
-        "F13"
+        Some("F13")
     } else if vk == VK_RMENU.0 {
-        "Right Alt"
+        Some("Right Alt")
+    } else if vk == 0xA4 {
+        Some("Left Alt")
     } else {
-        "Unknown"
+        None
+    }
+}
+
+fn trigger_key_display(vk: u16) -> String {
+    match trigger_key_name_static(vk) {
+        Some(name) => name.to_string(),
+        None => format!("0x{:02X}", vk),
     }
 }
 
@@ -252,7 +286,7 @@ fn make_tooltip() -> [u16; 128] {
     let enabled = ENABLED.load(Ordering::SeqCst);
     let trigger = TRIGGER_KEY.load(Ordering::Relaxed) as u16;
     let status = if enabled { "ON" } else { "OFF" };
-    let key_name = trigger_key_name(trigger);
+    let key_name = trigger_key_display(trigger);
 
     let text = format!("synergy-hangul-fix [{}] - {}", status, key_name);
     let mut tip: [u16; 128] = [0; 128];
@@ -451,19 +485,23 @@ fn show_context_menu(hwnd: HWND) {
         AppendMenuW(submenu, f13_flags, IDM_KEY_F13 as usize, wptr(&f13_text)).ok();
         AppendMenuW(submenu, ralt_flags, IDM_KEY_RALT as usize, wptr(&ralt_text)).ok();
 
-        CheckMenuRadioItem(
-            submenu,
-            IDM_KEY_CAPSLOCK,
-            IDM_KEY_RALT,
-            match trigger {
-                x if x == VK_CAPITAL.0 => IDM_KEY_CAPSLOCK,
-                x if x == VK_F13.0 => IDM_KEY_F13,
-                x if x == VK_RMENU.0 => IDM_KEY_RALT,
-                _ => IDM_KEY_CAPSLOCK,
-            },
-            MF_BYCOMMAND.0,
-        )
-        .ok();
+        // 현재 커스텀 키가 프리셋에 없으면 표시
+        let is_preset = trigger == VK_CAPITAL.0
+            || trigger == VK_F13.0
+            || trigger == VK_RMENU.0;
+        if !is_preset {
+            let current_text = wide_string(&format!("현재: {} (0x{:02X})", trigger_key_display(trigger), trigger));
+            AppendMenuW(submenu, MF_STRING | MF_CHECKED, 0, wptr(&current_text)).ok();
+        }
+
+        // 구분선 + 키 감지
+        AppendMenuW(submenu, MF_SEPARATOR, 0, PCWSTR::null()).ok();
+        let learn_label = if LEARNING.load(Ordering::SeqCst) {
+            wide_string("키를 누르세요...")
+        } else {
+            wide_string("키 감지(&L)...")
+        };
+        AppendMenuW(submenu, MF_STRING, IDM_KEY_LEARN as usize, wptr(&learn_label)).ok();
 
         let key_menu_text = wide_string("트리거 키(&K)");
         AppendMenuW(menu, MF_STRING | MF_POPUP, submenu.0 as usize, wptr(&key_menu_text)).ok();
@@ -558,6 +596,22 @@ unsafe extern "system" fn wndproc(
                     TRIGGER_KEY.store(VK_RMENU.0 as u32, Ordering::Relaxed);
                     update_tray_icon(hwnd);
                     debug_log("[CONFIG] trigger key → Right Alt (0xA5)");
+                }
+                IDM_KEY_LEARN => {
+                    // lParam에 vkCode가 있으면 훅에서 캡처된 것 (학습 완료)
+                    if l_param.0 != 0 {
+                        // 훅 콜백에서 PostMessage로 전달된 경우
+                        update_tray_icon(hwnd);
+                        debug_log(&format!(
+                            "[CONFIG] trigger key → {} (0x{:02X}) via learn",
+                            trigger_key_display(TRIGGER_KEY.load(Ordering::Relaxed) as u16),
+                            TRIGGER_KEY.load(Ordering::Relaxed)
+                        ));
+                    } else {
+                        // 메뉴에서 클릭: 학습 모드 진입
+                        LEARNING.store(true, Ordering::SeqCst);
+                        debug_log("[LEARN] waiting for key press...");
+                    }
                 }
                 IDM_DEBUG => {
                     toggle_debug_window();
@@ -664,7 +718,7 @@ fn main() {
         debug_log(&format!(
             "[INIT] started | trigger=0x{:02X} ({}) | enabled=true",
             TRIGGER_KEY.load(Ordering::Relaxed),
-            trigger_key_name(TRIGGER_KEY.load(Ordering::Relaxed) as u16)
+            trigger_key_display(TRIGGER_KEY.load(Ordering::Relaxed) as u16)
         ));
 
         // 메시지 루프
