@@ -7,6 +7,10 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use windows::core::PCWSTR;
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::UI::Input::Ime::{
+    ImmGetContext, ImmGetConversionStatus, ImmReleaseContext, ImmSetConversionStatus,
+    IME_CMODE_NATIVE, IME_CONVERSION_MODE, IME_SENTENCE_MODE,
+};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, VK_CAPITAL, VK_F13,
     VK_RMENU, VIRTUAL_KEY,
@@ -85,38 +89,56 @@ unsafe extern "system" fn keyboard_proc(
     CallNextHookEx(None, n_code, w_param, l_param)
 }
 
-/// VK_HANGUL 키 다운 + 키 업 전송
+/// 한글 IME 토글 - IMM API 직접 제어 + SendInput 폴백
 fn send_hangul_toggle() {
     SENDING.store(true, Ordering::SeqCst);
 
-    let inputs = [
-        INPUT {
-            r#type: INPUT_KEYBOARD,
-            Anonymous: INPUT_0 {
-                ki: KEYBDINPUT {
-                    wVk: VIRTUAL_KEY(VK_HANGUL),
-                    wScan: 0,
-                    dwFlags: Default::default(),
-                    time: 0,
-                    dwExtraInfo: 0,
-                },
-            },
-        },
-        INPUT {
-            r#type: INPUT_KEYBOARD,
-            Anonymous: INPUT_0 {
-                ki: KEYBDINPUT {
-                    wVk: VIRTUAL_KEY(VK_HANGUL),
-                    wScan: 0,
-                    dwFlags: KEYEVENTF_KEYUP,
-                    time: 0,
-                    dwExtraInfo: 0,
-                },
-            },
-        },
-    ];
-
     unsafe {
+        // 1차: IMM API로 직접 전환 시도
+        let fg_hwnd = GetForegroundWindow();
+        if fg_hwnd.0 as usize != 0 {
+            let himc = ImmGetContext(fg_hwnd);
+            if himc.0 as usize != 0 {
+                let mut conversion = IME_CONVERSION_MODE::default();
+                let mut sentence = IME_SENTENCE_MODE::default();
+                if ImmGetConversionStatus(himc, Some(&mut conversion), Some(&mut sentence)).as_bool() {
+                    // IME_CMODE_NATIVE (=1) 비트 토글 → 한글↔영문 전환
+                    let new_conversion = IME_CONVERSION_MODE(conversion.0 ^ IME_CMODE_NATIVE.0);
+                    let _ = ImmSetConversionStatus(himc, new_conversion, sentence);
+                }
+                let _ = ImmReleaseContext(fg_hwnd, himc);
+                SENDING.store(false, Ordering::SeqCst);
+                return;
+            }
+        }
+
+        // 2차 폴백: VK_HANGUL SendInput
+        let inputs = [
+            INPUT {
+                r#type: INPUT_KEYBOARD,
+                Anonymous: INPUT_0 {
+                    ki: KEYBDINPUT {
+                        wVk: VIRTUAL_KEY(VK_HANGUL),
+                        wScan: 0,
+                        dwFlags: Default::default(),
+                        time: 0,
+                        dwExtraInfo: 0,
+                    },
+                },
+            },
+            INPUT {
+                r#type: INPUT_KEYBOARD,
+                Anonymous: INPUT_0 {
+                    ki: KEYBDINPUT {
+                        wVk: VIRTUAL_KEY(VK_HANGUL),
+                        wScan: 0,
+                        dwFlags: KEYEVENTF_KEYUP,
+                        time: 0,
+                        dwExtraInfo: 0,
+                    },
+                },
+            },
+        ];
         SendInput(&inputs, size_of::<INPUT>() as i32);
     }
 
