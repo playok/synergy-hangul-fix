@@ -1,0 +1,21 @@
+[package]
+name = "synergy3-hangeul"
+version = "0.2.0"
+edition = "2021"
+description = "Synergy3 Mac→Windows 한글 전환 키 변환 프로그램"
+
+[dependencies.windows]
+version = "0.58"
+features = [
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Shell",
+    "Win32_System_LibraryLoader",
+    "Win32_Graphics_Gdi",
+]
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true
