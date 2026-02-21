@@ -1,8 +1,8 @@
 [package]
-name = "synergy3-hangeul"
+name = "synergy-hangul-fix"
 version = "0.2.0"
 edition = "2021"
-description = "Synergy3 Mac→Windows 한글 전환 키 변환 프로그램"
+description = "Fix Korean (Hangul) input toggle when using Synergy/Deskflow from Mac to Windows"
 
 [dependencies.windows]
 version = "0.58"

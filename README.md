@@ -1,4 +1,4 @@
-# synergy3-hangeul
+# synergy-hangul-fix
 
 A Windows system tray utility that fixes Korean (Hangul) input toggle when using Synergy3 from a Mac server to a Windows client.
 
@@ -27,7 +27,7 @@ This program installs a global low-level keyboard hook (`WH_KEYBOARD_LL`) that i
 
 ## Installation
 
-1. Download `synergy3-hangeul.exe` from [Releases](../../releases)
+1. Download `synergy-hangul-fix.exe` from [Releases](../../releases)
 2. Copy to any folder on the Windows client machine
 3. Run the executable (no installation needed)
 
@@ -52,7 +52,7 @@ cargo build --release
 cargo build --release --target x86_64-pc-windows-gnu
 ```
 
-The binary will be at `target/release/synergy3-hangeul.exe` (or `target/x86_64-pc-windows-gnu/release/synergy3-hangeul.exe` for cross-compilation).
+The binary will be at `target/release/synergy-hangul-fix.exe` (or `target/x86_64-pc-windows-gnu/release/synergy-hangul-fix.exe` for cross-compilation).
 
 ## How It Works
 

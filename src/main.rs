@@ -143,7 +143,7 @@ fn make_tooltip() -> [u16; 128] {
     let status = if enabled { "ON" } else { "OFF" };
     let key_name = trigger_key_name(trigger);
 
-    let text = format!("synergy3-hangeul [{}] - {}", status, key_name);
+    let text = format!("synergy-hangul-fix [{}] - {}", status, key_name);
     let mut tip: [u16; 128] = [0; 128];
     for (i, c) in text.encode_utf16().take(127).enumerate() {
         tip[i] = c;
@@ -360,7 +360,7 @@ fn main() {
         let hinstance: HINSTANCE = hmodule.into();
 
         // 윈도우 클래스 등록
-        let class_name = wide_string("synergy3_hangeul_wnd");
+        let class_name = wide_string("synergy_hangul_fix_wnd");
         let wc = WNDCLASSW {
             lpfnWndProc: Some(wndproc),
             hInstance: hinstance,
@@ -373,7 +373,7 @@ fn main() {
         let hwnd = CreateWindowExW(
             WINDOW_EX_STYLE::default(),
             wptr(&class_name),
-            wptr(&wide_string("synergy3-hangeul")),
+            wptr(&wide_string("synergy-hangul-fix")),
             WS_OVERLAPPED,
             0, 0, 0, 0,
             HWND_MESSAGE, // 메시지 전용 윈도우
@@ -395,7 +395,7 @@ fn main() {
                 MessageBoxW(
                     None,
                     wptr(&wide_string("키보드 훅 설치에 실패했습니다.\n관리자 권한으로 실행해 주세요.")),
-                    wptr(&wide_string("synergy3-hangeul 오류")),
+                    wptr(&wide_string("synergy-hangul-fix 오류")),
                     MB_ICONERROR | MB_OK,
                 );
                 return;

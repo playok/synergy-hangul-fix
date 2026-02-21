@@ -1,4 +1,4 @@
-# synergy3-hangeul
+# synergy-hangul-fix
 
 Synergy3로 Mac에서 Windows로 키보드를 공유할 때 한글 전환이 안 되는 문제를 해결하는 Windows 시스템 트레이 유틸리티입니다.
 
@@ -27,7 +27,7 @@ Synergy3 (또는 Deskflow)를 통해 Mac의 키보드를 Windows와 공유하면
 
 ## 설치
 
-1. [Releases](../../releases)에서 `synergy3-hangeul.exe` 다운로드
+1. [Releases](../../releases)에서 `synergy-hangul-fix.exe` 다운로드
 2. Windows 클라이언트 컴퓨터의 원하는 폴더에 복사
 3. 실행 (별도 설치 불필요)
 
@@ -52,7 +52,7 @@ cargo build --release
 cargo build --release --target x86_64-pc-windows-gnu
 ```
 
-바이너리 위치: `target/release/synergy3-hangeul.exe` (크로스 컴파일 시 `target/x86_64-pc-windows-gnu/release/synergy3-hangeul.exe`)
+바이너리 위치: `target/release/synergy-hangul-fix.exe` (크로스 컴파일 시 `target/x86_64-pc-windows-gnu/release/synergy-hangul-fix.exe`)
 
 ## 동작 원리
 
